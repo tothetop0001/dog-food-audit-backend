@@ -1,0 +1,465 @@
+[1mdiff --git a/app/models/dog_food.py b/app/models/dog_food.py[m
+[1mindex ea69f0a..4902b40 100644[m
+[1m--- a/app/models/dog_food.py[m
+[1m+++ b/app/models/dog_food.py[m
+[36m@@ -73,6 +73,9 @@[m [mclass Product(Base):[m
+     nutritionally_adequate = Column(String(100), nullable=True)[m
+     ingredients = Column(Text, nullable=True)[m
+     food_storage = Column(String(100), nullable=True)[m
+[32m+[m[32m    sourcing = Column(String(100), nullable=True)[m
+[32m+[m[32m    synthetic = Column(Integer, nullable=True)[m
+[32m+[m[32m    longevity = Column(Integer, nullable=True)[m
+     packaging_size = Column(String(100), nullable=True)[m
+     shelf_life = Column(Integer, nullable=True)[m
+     num_servings = Column(Text, nullable=True)[m
+[1mdiff --git a/app/schemas/dog_food.py b/app/schemas/dog_food.py[m
+[1mindex 08b25f1..54c4636 100644[m
+[1m--- a/app/schemas/dog_food.py[m
+[1m+++ b/app/schemas/dog_food.py[m
+[36m@@ -69,6 +69,9 @@[m [mclass ProductBase(BaseModel):[m
+     nutritionally_adequate: Optional[str] = Field(None, nullable=True, description="Nutritionally adequate")[m
+     ingredients: Optional[str] = Field(None, nullable=True, description="Ingredients")[m
+     food_storage: Optional[str] = Field(None, nullable=True, description="Food storage")[m
+[32m+[m[32m    sourcing: Optional[str] = Field(None, nullable=True, description="Sourcing")[m
+[32m+[m[32m    synthetic: Optional[int] = Field(None, nullable=True, description="Synthetic")[m
+[32m+[m[32m    longevity: Optional[int] = Field(None, nullable=True, description="Longevity")[m
+     packaging_size: Optional[str] = Field(None, nullable=True, description="Packaging size")[m
+     shelf_life: Optional[int] = Field(None, nullable=True, description="Shelf life")[m
+     num_servings: Optional[str] = Field(None, nullable=True, description="Number of servings")[m
+[1mdiff --git a/app/scrapers/chewy_playwright_rotating.py b/app/scrapers/chewy_playwright_rotating.py[m
+[1mindex 8ef6c70..51cf25f 100644[m
+[1m--- a/app/scrapers/chewy_playwright_rotating.py[m
+[1m+++ b/app/scrapers/chewy_playwright_rotating.py[m
+[36m@@ -168,6 +168,17 @@[m [mclass ChewyPlaywrightScraper(LoggerMixin):[m
+             else:[m
+                 data["ingredients"] = ""[m
+ [m
+[32m+[m[32m            teble_all: list[BeautifulSoup] = soup.select("table")[m
+[32m+[m[32m            for table in teble_all:[m
+[32m+[m[32m                tbody = table.select_one("tbody")[m
+[32m+[m[32m                if tbody is None:[m
+[32m+[m[32m                    data["food_category"] = ""[m
+[32m+[m[32m                    continue[m
+[32m+[m[32m                for row in tbody.select("tr"):[m
+[32m+[m[32m                    th_element = row.select_one("th")[m
+[32m+[m[32m                    td_element = row.select_one("td")[m
+[32m+[m[32m                    if th_element and td_element and th_element.get_text().lower() == "food form":[m
+[32m+[m[32m                        data["food_category"] = td_element.get_text() if td_element.get_text() else ""[m
+             [m
+             food_storage_section = soup.select_one("#STORAGE-section")[m
+             if food_storage_section:[m
+[36m@@ -298,9 +309,13 @@[m [mclass ChewyPlaywrightScraper(LoggerMixin):[m
+                           continue[m
+                         await page.goto(link, wait_until="domcontentloaded")[m
+                         await asyncio.sleep(5)[m
+[32m+[m[32m                        page.wait_for_selector(".styles_markdownTable__0uIx2", timeout=50000)[m
+                         product_content = await page.content()[m
+                         product_soup = BeautifulSoup(product_content, "html.parser")[m
+                         data = await self.parse_product_page(product_soup, link, image_url)[m
+[32m+[m[32m                        print("data!!!:", data)[m
+[32m+[m[32m                        if "bundle:" in data["product_name"].lower():[m
+[32m+[m[32m                          continue[m
+                         if data["product_name"]:[m
+                           results.append(data)[m
+                     print("Navigating to first page...")[m
+[1mdiff --git a/app/services/category_classification_service.py b/app/services/category_classification_service.py[m
+[1mindex 3d6911c..771b0e3 100644[m
+[1m--- a/app/services/category_classification_service.py[m
+[1m+++ b/app/services/category_classification_service.py[m
+[36m@@ -1,34 +1,96 @@[m
+[31m-def classify_category(category: str) -> str:[m
+[31m-    """Classify the category."""[m
+[31m-    name = category.lower()[m
+[31m-[m
+[31m-    if "dry" in name:[m
+[31m-        return "Dry Food"[m
+[31m-    elif "wet" in name or "canned" in name:[m
+[31m-        return "Wet Food"[m
+[31m-    elif "raw" in name or "freeze-dried" in name:[m
+[31m-        return "Raw Food"[m
+[31m-    elif "freeze" in name or "refrigerated" in name:[m
+[31m-        return "Freeze-dried Food"[m
+[31m-    elif "treat" in name:[m
+[31m-        return "Treats"[m
+[31m-    elif "dehydrated" in name:[m
+[31m-        return "Dehydrated Food"[m
+[31m-    elif "frozen" in name:[m
+[31m-        return "Frozen Food"[m
+[31m-    elif "Air-dried" in name:[m
+[31m-        return "Air-dried Food"[m
+[31m-    elif "shelf" in name:[m
+[31m-        return "Shelf-stable Food"[m
+[31m-    elif "fresh" in name:[m
+[31m-        return "Fresh Food"[m
+[31m-    elif "liquid" in name:[m
+[31m-        return "Liquid Food"[m
+[31m-    elif "powder" in name:[m
+[31m-        return "Powder Food"[m
+[31m-    elif "bone" in name:[m
+[31m-        return "Bone Broth Food"[m
+[31m-    elif "topper" in name:[m
+[31m-        return "Topper Food"[m
+[31m-    else:[m
+[31m-        return None[m
+\ No newline at end of file[m
+[32m+[m[32m# services/processing_detection_service.py[m
+[32m+[m[32mimport re[m
+[32m+[m[32mfrom collections import defaultdict[m
+[32m+[m
+[32m+[m[32mCATEGORY_CLASSES = [[m
+[32m+[m[32m    "Canned",[m
+[32m+[m[32m    "Dry",[m
+[32m+[m[32m    "Treats"[m
+[32m+[m[32m][m
+[32m+[m
+[32m+[m[32mKEYWORDS = {[m
+[32m+[m[32m    "Raw Food": {[m
+[32m+[m[32m        "main": ["raw"],[m
+[32m+[m[32m        "supporting": ["raw food", "raw frozen", "raw patties", "raw nuggets", "uncooked", "minimally processed", "primal raw", "nature's variety instinct raw", "raw meal", "raw recipe", "raw medallions", "frozen raw dog food", "raw blend", "raw coated", "raw bites", "raw infused", "raw bones", "raw mix ins", "raw meat formula", "raw beef blend", "barf diet", "biologically appropriate raw food"][m
+[32m+[m[32m    },[m
+[32m+[m[32m    "Fresh Food": {[m
+[32m+[m[32m        "main": ["fresh"],[m
+[32m+[m[32m        "supporting": ["fresh food", "gently cooked", "lightly cooked", "refrigerated", "homemade style", "fresh food", "gently cooked", "lightly cooked", "fresh frozen", "fresh meals, human grade meals", "cooked fresh", "fresh pet food", "whole food diet", "fridge-stored", "fresh delivery", "real food for dogs", "refrigerated dog food", "made fresh weekly", "freshly prepared", "gently prepared", "made fresh", "home style dog food", "cooked to order", "fresh from our kitchen"][m
+[32m+[m[32m    },[m
+[32m+[m[32m    "Dry Food": {[m
+[32m+[m[32m        "main": ["dry"],[m
+[32m+[m[32m        "supporting": ["Kibble", "dry food", "dry kibble", "crunchy bites", "oven baked dry", "extruded", "dry formula", "premium dry", "grain free kibble", "dry food", "kibble", "crunchy bites", "dry dog formula", "dehydrated nuggets", "dry meal", "extuded food", "dry blend", "baked kibble", "shelf stable kibble", "grain free kibble", "complete dry food", "balanced dry food", "oven baked bites", "dry protein blend", "everyday kibble", "traditional kibble", "premium dry dog food", "dry crunch", "vet recommended kibble", "hard dog food", "biscuit style food"][m
+[32m+[m[32m    },[m
+[32m+[m[32m    "Wet Food": {[m
+[32m+[m[32m        "main": ["wet"],[m
+[32m+[m[32m        "supporting": ["canned", "wet food", "slow cooked in gravy", "shelf stable pouch", "stew like consistency", "gently cooked and sealed", "cooked in the can", "retort pouch", "cooked for safety", "moisture rich food", "wet food", "canned food", "moist food", "stewed", "loaf", "pate", "broth", "gravy", "chunk in gravy", "shredded in broth", "homestyle stew", "meat chunks in jelly", "pouch food", "pull-tab can", "shelf stable wet food", "slow cooked", "canned entrée", "meat loaf style", "toppers in gravy", "wet entree", "classic canned dog food", "wet food", "canned food", "moist food", "pâté", "stew style", "gravy rich", "soft dog food", "tender chunks", "loaf style", "meaty stew", "canned recipe", "hydrated meals", "slow cooked wet food", "premium canned dog food", "savory wet meal", "juicy dog food", "ready to serve wet", "pull tab can", "broth infused", "vet recommended wet food", "wet entree", "complete wet food"][m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mNEGATORS = ["no", "not", "never", "without", "free of", "doesn't", "isn't", "aren't", "non", "un"][m
+[32m+[m
+[32m+[m[32mdef normalize_text(text: str) -> str:[m
+[32m+[m[32m    if text is None or not text or text == "":[m
+[32m+[m[32m        return ""[m
+[32m+[m[32m    text = text.lower()[m
+[32m+[m[32m    text = re.sub(r"[^\w\s]", " ", text)[m
+[32m+[m[32m    return re.sub(r"\s+", " ", text).strip()[m
+[32m+[m
+[32m+[m[32mdef contains_negation(window: str) -> bool:[m
+[32m+[m[32m    return any(neg in window for neg in NEGATORS)[m
+[32m+[m
+[32m+[m[32mdef score_category(text: str):[m
+[32m+[m[32m    scores = defaultdict(int)[m
+[32m+[m[32m    reasons = defaultdict(list)[m
+[32m+[m[41m    [m
+[32m+[m[32m    # Safety check for None or empty text[m
+[32m+[m[32m    if not text:[m
+[32m+[m[32m        return scores, reasons[m
+[32m+[m[41m    [m
+[32m+[m[32m    tokens = text.split()[m
+[32m+[m[41m    [m
+[32m+[m[32m    for category, kw in KEYWORDS.items():[m
+[32m+[m[32m        for k in kw["main"]:[m
+[32m+[m[32m            for match in re.finditer(r"\b" + re.escape(k) + r"\b", text):[m
+[32m+[m[32m                start_idx = len(text[:match.start()].split())[m
+[32m+[m[32m                window = " ".join(tokens[max(0, start_idx-4):start_idx+1])[m
+[32m+[m[32m                if contains_negation(window):[m
+[32m+[m[32m                    scores[category] -= 3[m
+[32m+[m[32m                    reasons[category].append(f"Negated main keyword '{k}'")[m
+[32m+[m[32m                else:[m
+[32m+[m[32m                    scores[category] += 5[m
+[32m+[m[32m                    reasons[category].append(f"Main keyword '{k}'")[m
+[32m+[m[32m        for k in kw["supporting"]:[m
+[32m+[m[32m            for match in re.finditer(r"\b" + re.escape(k) + r"\b", text):[m
+[32m+[m[32m                start_idx = len(text[:match.start()].split())[m
+[32m+[m[32m                window = " ".join(tokens[max(0, start_idx-4):start_idx+1])[m
+[32m+[m[32m                if contains_negation(window):[m
+[32m+[m[32m                    scores[category] -= 1[m
+[32m+[m[32m                    reasons[category].append(f"Negated supporting keyword '{k}'")[m
+[32m+[m[32m                else:[m
+[32m+[m[32m                    scores[category] += 2[m
+[32m+[m[32m                    reasons[category].append(f"Supporting keyword '{k}'")[m
+[32m+[m[32m    return scores, reasons[m
+[32m+[m
+[32m+[m[32mdef select_category(scores, reasons):[m
+[32m+[m[32m    if not scores:[m
+[32m+[m[32m        return None, "No valid category"[m
+[32m+[m[32m    max_score = max(scores.values())[m
+[32m+[m[32m    best = [m for m, s in scores.items() if s == max_score and s > 0][m
+[32m+[m[32m    if not best:[m
+[32m+[m[32m        return None, "No category scores"[m
+[32m+[m[32m    if len(best) > 1:[m
+[32m+[m[32m        best.sort(key=lambda m: sum("Main keyword" in r for r in reasons[m]), reverse=True)[m
+[32m+[m[32m    return best[0], reasons[best[0]][m
+[32m+[m
+[32m+[m[32mdef infer_category(page_text: str):[m
+[32m+[m[32m    if page_text is None or not page_text or page_text == "":[m
+[32m+[m[32m        return {[m
+[32m+[m[32m            "category": None[m
+[32m+[m[32m        }[m
+[32m+[m[32m    text = normalize_text(page_text)[m
+[32m+[m[32m    scores, reasons = score_category(text)[m
+[32m+[m[32m    category = select_category(scores, reasons)[m
+[32m+[m[32m    return {[m
+[32m+[m[32m        "category": category[m
+[32m+[m[32m    }[m
+[1mdiff --git a/app/services/food_scoring_engine.py b/app/services/food_scoring_engine.py[m
+[1mindex c3ae6e9..2e946a2 100644[m
+[1m--- a/app/services/food_scoring_engine.py[m
+[1m+++ b/app/services/food_scoring_engine.py[m
+[36m@@ -61,7 +61,9 @@[m [mclass DogFoodScorer:[m
+     def sourcing_deduction(self, sourcing: str) -> dict:[m
+         max_deduction = -15[m
+         deduction = -10[m
+[31m-        if sourcing == "Human Grade Organic":[m
+[32m+[m[32m        if sourcing == "":[m
+[32m+[m[32m            sourcing = "Human Grade (organic)"[m
+[32m+[m[32m        if sourcing == "Human Grade (organic)":[m
+             deduction = 0[m
+         elif sourcing == "Human Grade":[m
+             deduction = -3[m
+[1mdiff --git a/app/services/scoring_system_service.py b/app/services/scoring_system_service.py[m
+[1mindex d653e42..46e8a50 100644[m
+[1m--- a/app/services/scoring_system_service.py[m
+[1m+++ b/app/services/scoring_system_service.py[m
+[36m@@ -14,6 +14,15 @@[m [mclass ScoringSystemService(LoggerMixin):[m
+         self.db = db[m
+         self.scorer = DogFoodScorer()[m
+ [m
+[32m+[m[32m    def _safe_float_conversion(self, value: str, default: float = 0.0) -> float:[m
+[32m+[m[32m        """Safely convert string to float with default value."""[m
+[32m+[m[32m        if not value or value.strip() == "":[m
+[32m+[m[32m            return default[m
+[32m+[m[32m        try:[m
+[32m+[m[32m            return float(value)[m
+[32m+[m[32m        except (ValueError, TypeError):[m
+[32m+[m[32m            return default[m
+[32m+[m
+     async def get_score(self, add_topper: bool, pet_name: str, breed: str, year: str, month: str, weight: str, product: str, storage: str, packaging_size: str, topper: str, shelf_life: str, topper_storage: str, topper_packaging_size: str, topper_shelf_life: str) -> float:[m
+         """Get the score."""[m
+         base_product_result = await self.db.execute([m
+[36m@@ -66,17 +75,28 @@[m [mclass ScoringSystemService(LoggerMixin):[m
+             topper_processing = topper_product.processing_method[m
+         else:[m
+             topper_processing = ""[m
+[31m-        protein = float(base_product.guaranteed_analysis.protein)[m
+[31m-        fat = float(base_product.guaranteed_analysis.fat)[m
+[31m-        fiber = float(base_product.guaranteed_analysis.fiber)[m
+[31m-        moisture = float(base_product.guaranteed_analysis.moisture)[m
+[31m-        ash = float(base_product.guaranteed_analysis.ash)[m
+[32m+[m[32m        sourcing = base_product.sourcing[m
+[32m+[m[32m        if not sourcing:[m
+[32m+[m[32m            sourcing = ""[m
+[32m+[m[32m        synthetic = base_product.synthetic[m
+[32m+[m[32m        if not synthetic:[m
+[32m+[m[32m            synthetic = 0[m
+[32m+[m[32m        longevity = base_product.longevity[m
+[32m+[m[32m        if not longevity:[m
+[32m+[m[32m            longevity = 0[m
+[32m+[m[32m        # Safely convert guaranteed analysis values to float with defaults[m
+[32m+[m[32m        protein = self._safe_float_conversion(base_product.guaranteed_analysis.protein, 0.0)[m
+[32m+[m[32m        fat = self._safe_float_conversion(base_product.guaranteed_analysis.fat, 0.0)[m
+[32m+[m[32m        fiber = self._safe_float_conversion(base_product.guaranteed_analysis.fiber, 0.0)[m
+[32m+[m[32m        moisture = self._safe_float_conversion(base_product.guaranteed_analysis.moisture, 0.0)[m
+[32m+[m[32m        ash = self._safe_float_conversion(base_product.guaranteed_analysis.ash, 6.0)  # Default ash is 6.0[m
+         protein_quality = base_product.ingredient_quality.protein[m
+         fat_quality = base_product.ingredient_quality.fat[m
+         fiber_quality = base_product.ingredient_quality.fiber[m
+         carbohydrate_quality = base_product.ingredient_quality.carbohydrate[m
+[31m-        dirty_dozen = len((base_product.ingredient_quality.dirty_dozen).split(","))[m
+[31m-        synthetic_count = 5[m
+[32m+[m[32m        # Safely calculate dirty dozen count[m
+[32m+[m[32m        dirty_dozen_str = base_product.ingredient_quality.dirty_dozen or ""[m
+[32m+[m[32m        dirty_dozen = len(dirty_dozen_str.split(",")) if dirty_dozen_str.strip() else 0[m
+         if(base_product.nutritionally_adequate == "Yes"):[m
+             base_adequate = True[m
+         else:[m
+[36m@@ -95,7 +115,7 @@[m [mclass ScoringSystemService(LoggerMixin):[m
+ [m
+         carb_percent = self.scorer.calculate_carb_percent(protein, fat, fiber, ash, moisture, food_type)[m
+         food_deduction = self.scorer.food_deduction(food_type)[m
+[31m-        sourcing_deduction = self.scorer.sourcing_deduction("Human Grade Organic")[m
+[32m+[m[32m        sourcing_deduction = self.scorer.sourcing_deduction(sourcing)[m
+         processing_deduction = self.scorer.processing_base_topper(base_processing, topper_processing)[m
+         adequacy_deduction = self.scorer.adequacy_deduction(base_adequate)[m
+         carb_deduction = self.scorer.carb_deduction(carb_percent)[m
+[36m@@ -104,8 +124,8 @@[m [mclass ScoringSystemService(LoggerMixin):[m
+         ingredient_quality_fiber = self.scorer.ingredient_quality_fiber_deduction(fiber_quality.lower())[m
+         ingredient_quality_carbohydrate = self.scorer.ingredient_quality_carbohydrate_deduction(carbohydrate_quality.lower())[m
+         dirty_dozen_deduction = self.scorer.dirty_dozen_deduction(dirty_dozen)[m
+[31m-        synthetic_deduction = self.scorer.synthetic_deduction(synthetic_count)[m
+[31m-        longevity_deduction = self.scorer.longevity_deduction(0)[m
+[32m+[m[32m        synthetic_deduction = self.scorer.synthetic_deduction(synthetic)[m
+[32m+[m[32m        longevity_deduction = self.scorer.longevity_deduction(longevity)[m
+         storage_deduction = self.scorer.storage_deduction(storage, topper_storage)[m
+         packaging_deduction = self.scorer.packaging_deduction(packaging_size, topper_packaging_size)[m
+         shelf_life_deduction = self.scorer.shelf_life_deduction(shelf_life, topper_shelf_life)[m
+[1mdiff --git a/app/services/scraping_service.py b/app/services/scraping_service.py[m
+[1mindex 73fea40..6fae951 100644[m
+[1m--- a/app/services/scraping_service.py[m
+[1m+++ b/app/services/scraping_service.py[m
+[36m@@ -15,9 +15,10 @@[m [mfrom app.services.guaranteed_detection_service import infer_guaranteed_analysis[m
+ from app.services.ingredient_classification_service import classify_ingredient_list[m
+ from app.services.nutritional_detection_service import infer_nutritionally_adequate[m
+ from app.services.processing_detection_service import infer_processing_method[m
+[31m-from app.services.category_classification_service import classify_category[m
+[32m+[m[32mfrom app.services.category_classification_service import infer_category[m
+ from app.scrapers.chewy_scraper import ChewyScraper[m
+ from app.scrapers.chewy_playwright_rotating import ChewyPlaywrightScraper[m
+[32m+[m[32mfrom app.services.sourcing_detection_service import infer_sourcing[m
+ [m
+ [m
+ class ScrapingService(LoggerMixin):[m
+[36m@@ -68,14 +69,18 @@[m [mclass ScrapingService(LoggerMixin):[m
+                         classified_ingredients = classify_ingredient_list(ingredients.split(", "))[m
+                     else:[m
+                         classified_ingredients = {"protein": "", "fat": "", "fiber": "", "carbohydrate": ""}[m
+[31m-                    [m
+[32m+[m
+[32m+[m[32m                    sourcing = infer_sourcing(result_tmp["description"])[m
+[32m+[m[32m                    if sourcing["sourcing"] == None or sourcing["sourcing"] == "":[m
+[32m+[m[32m                        sourcing = infer_sourcing(result_tmp["feeding_guidelines"])[m
+[32m+[m
+                     # Safely get guaranteed analysis[m
+                     guaranteed_analysis = result_tmp["guaranteed_analysis"][m
+                     dirty_dozen = guaranteed_analysis["dirty_dozen"][m
+                     [m
+                     # Safely get product name and classify category[m
+                     product_name = result_tmp["product_name"][m
+[31m-                    # categories = classify_category(product_name)[m
+[32m+[m[32m                    category = infer_category(product_name)[m
+                     [m
+                     # Safely get description for nutritional adequacy[m
+                     description = result_tmp["description"][m
+[36m@@ -84,6 +89,10 @@[m [mclass ScrapingService(LoggerMixin):[m
+                         "brand": result_tmp["brand"],[m
+                         "productName": product_name,[m
+                         "category": result_tmp["food_category"],[m
+[32m+[m[32m                        # "category": categories,[m
+[32m+[m[32m                        "category": result_tmp["food_category"].split(",")[0] if result_tmp["food_category"] else category.get("category", "Unknown"),[m
+[32m+[m[32m                        "synthetic": result_tmp["synthetic"] if result_tmp["synthetic"] else 0,[m
+[32m+[m[32m                        "longevity": result_tmp["longevity"] if result_tmp["longevity"] else 0,[m
+                         "flavors": result_tmp["flavors"],[m
+                         "nutritionallyAdequate": infer_nutritionally_adequate(description) if description else "Unknown",[m
+                         "processingMethod": processing_method.get("method", "Unknown"),[m
+[36m@@ -92,6 +101,7 @@[m [mclass ScrapingService(LoggerMixin):[m
+                         "classifiedIngredients": classified_ingredients,[m
+                         "dirtyDozen": dirty_dozen,[m
+                         "foodStorage": result_tmp["food_storage"],[m
+[32m+[m[32m                        "sourcing": sourcing.get("sourcing", "Unknown"),[m
+                         "packagingSize": result_tmp["packaging_size"],[m
+                         "numServings": result_tmp["num_servings"],[m
+                         "containerWeight": result_tmp["container_weight"],[m
+[36m@@ -316,6 +326,9 @@[m [mclass ScrapingService(LoggerMixin):[m
+                 existing_product.nutritionally_adequate = item_data["nutritionallyAdequate"][m
+                 existing_product.ingredients = item_data["ingredients"][m
+                 existing_product.food_storage = item_data["foodStorage"][m
+[32m+[m[32m                existing_product.sourcing = item_data["sourcing"][m
+[32m+[m[32m                existing_product.synthetic = item_data["synthetic"][m
+[32m+[m[32m                existing_product.longevity = item_data["longevity"][m
+                 existing_product.packaging_size = item_data["packagingSize"][m
+                 existing_product.num_servings = item_data["numServings"][m
+                 existing_product.container_weight = item_data["containerWeight"][m
+[36m@@ -342,6 +355,9 @@[m [mclass ScrapingService(LoggerMixin):[m
+             new_product.nutritionally_adequate = item_data["nutritionallyAdequate"][m
+             new_product.ingredients = item_data["ingredients"][m
+             new_product.food_storage = item_data["foodStorage"][m
+[32m+[m[32m            new_product.sourcing = item_data["sourcing"][m
+[32m+[m[32m            new_product.synthetic = item_data["synthetic"][m
+[32m+[m[32m            new_product.longevity = item_data["longevity"][m
+             new_product.packaging_size = item_data["packagingSize"][m
+             new_product.num_servings = item_data["numServings"][m
+             new_product.container_weight = item_data["containerWeight"][m
+[1mdiff --git a/app/services/sourcing_detection_service.py b/app/services/sourcing_detection_service.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000..a047df7[m
+[1m--- /dev/null[m
+[1m+++ b/app/services/sourcing_detection_service.py[m
+[36m@@ -0,0 +1,92 @@[m
+[32m+[m[32m# services/processing_detection_service.py[m
+[32m+[m[32mimport re[m
+[32m+[m[32mfrom collections import defaultdict[m
+[32m+[m
+[32m+[m[32mSOURCING_CLASSES = [[m
+[32m+[m[32m    "Human Grade (organic)",[m
+[32m+[m[32m    "Human Grade",[m
+[32m+[m[32m    "Feed Grade"[m
+[32m+[m[32m][m
+[32m+[m
+[32m+[m[32mKEYWORDS = {[m
+[32m+[m[32m    "Human Grade (organic)": {[m
+[32m+[m[32m        "main": ["organic human grade"],[m
+[32m+[m[32m        "supporting": ["usda organic", "certified organic", "organic meat", "organic vegetables", "organic certified", "human grade organic", "usda organic", "certified organic", "organic meat", "organic vegetables", "organic certified", "human grade organic", "made with organic ingredients", "organic certified facility", "organic produce", "organically sourced", "all organic formula", "non gmo and organic", "organic pet food", "100 organic", "premium organic ingredients", "organic human grade food", "organic superfoods", "clean organic label", "small batch organic", "organic chicken", "organic beef", "organic lamb", "organic turkey", "humanely raised organic", "organic whole foods"][m
+[32m+[m[32m    },[m
+[32m+[m[32m    "Human Grade": {[m
+[32m+[m[32m        "main": ["human grade"],[m
+[32m+[m[32m        "supporting": ["human grade ingredients", "human quality", "usda inspected", "fit for human consumption", "human edible", "made in human food facility", "made in usda inspected facility", "cooked in human grade kitchens", "made in human food kitchens", "crafted to human food standards", "made in usda kitchen", "inspected for human consumption", "food grade facility", "premium human grade meat", "prepared in human quality facilities", "meets human food safety standards", "small batch human grade", "restaurant quality", "human approved formulas", "made with human edible meat", "real food for dogs", "human grade sourcing", "home cooked quality"][m
+[32m+[m[32m    },[m
+[32m+[m[32m    "Feed Grade": {[m
+[32m+[m[32m        "main": ["feed grade"],[m
+[32m+[m[32m        "supporting": ["feed quality", "animal feed", "not for human consumption", "rendered meat", "by products", "meat meal", "feed safe", "pet feed", "feed quality", "animal feed", "not for human consumption", "rendered meat", "by products", "meat meal", "pet feed", "feed grade ingredients", "feed use only", "not usda inspected", "4d meat", "meat by product meal", "not human edible", "factory scraps", "feed grade facility", "waste derived protein", "animal digest", "feed standard", "bulk animal feed", "meat and bone meal", "slaughterhouse waste", "unfit for human consumption"][m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mNEGATORS = ["no", "not", "never", "without", "free of", "doesn't", "isn't", "aren't", "non", "un"][m
+[32m+[m
+[32m+[m[32mdef normalize_text(text: str) -> str:[m
+[32m+[m[32m    if text is None or not text or text == "":[m
+[32m+[m[32m        return ""[m
+[32m+[m[32m    text = text.lower()[m
+[32m+[m[32m    text = re.sub(r"[^\w\s]", " ", text)[m
+[32m+[m[32m    return re.sub(r"\s+", " ", text).strip()[m
+[32m+[m
+[32m+[m[32mdef contains_negation(window: str) -> bool:[m
+[32m+[m[32m    return any(neg in window for neg in NEGATORS)[m
+[32m+[m
+[32m+[m[32mdef score_sourcing(text: str):[m
+[32m+[m[32m    scores = defaultdict(int)[m
+[32m+[m[32m    reasons = defaultdict(list)[m
+[32m+[m[41m    [m
+[32m+[m[32m    # Safety check for None or empty text[m
+[32m+[m[32m    if not text:[m
+[32m+[m[32m        return scores, reasons[m
+[32m+[m[41m    [m
+[32m+[m[32m    tokens = text.split()[m
+[32m+[m[41m    [m
+[32m+[m[32m    for sourcing, kw in KEYWORDS.items():[m
+[32m+[m[32m        for k in kw["main"]:[m
+[32m+[m[32m            for match in re.finditer(r"\b" + re.escape(k) + r"\b", text):[m
+[32m+[m[32m                start_idx = len(text[:match.start()].split())[m
+[32m+[m[32m                window = " ".join(tokens[max(0, start_idx-4):start_idx+1])[m
+[32m+[m[32m                if contains_negation(window):[m
+[32m+[m[32m                    scores[sourcing] -= 3[m
+[32m+[m[32m                    reasons[sourcing].append(f"Negated main keyword '{k}'")[m
+[32m+[m[32m                else:[m
+[32m+[m[32m                    scores[sourcing] += 5[m
+[32m+[m[32m                    reasons[sourcing].append(f"Main keyword '{k}'")[m
+[32m+[m[32m        for k in kw["supporting"]:[m
+[32m+[m[32m            for match in re.finditer(r"\b" + re.escape(k) + r"\b", text):[m
+[32m+[m[32m                start_idx = len(text[:match.start()].split())[m
+[32m+[m[32m                window = " ".join(tokens[max(0, start_idx-4):start_idx+1])[m
+[32m+[m[32m                if contains_negation(window):[m
+[32m+[m[32m                    scores[sourcing] -= 1[m
+[32m+[m[32m                    reasons[sourcing].append(f"Negated supporting keyword '{k}'")[m
+[32m+[m[32m                else:[m
+[32m+[m[32m                    scores[sourcing] += 2[m
+[32m+[m[32m                    reasons[sourcing].append(f"Supporting keyword '{k}'")[m
+[32m+[m[32m    return scores, reasons[m
+[32m+[m
+[32m+[m[32mdef select_sourcing(scores, reasons):[m
+[32m+[m[32m    if not scores:[m
+[32m+[m[32m        return None, "No valid sourcing"[m
+[32m+[m[32m    max_score = max(scores.values())[m
+[32m+[m[32m    best = [m for m, s in scores.items() if s == max_score and s > 0][m
+[32m+[m[32m    if not best:[m
+[32m+[m[32m        return None, "No sourcing scores"[m
+[32m+[m[32m    if len(best) > 1:[m
+[32m+[m[32m        best.sort(key=lambda m: sum("Main keyword" in r for r in reasons[m]), reverse=True)[m
+[32m+[m[32m    return best[0], reasons[best[0]][m
+[32m+[m
+[32m+[m[32mdef infer_sourcing(page_text: str):[m
+[32m+[m[32m    if page_text is None or not page_text or page_text == "":[m
+[32m+[m[32m        return {[m
+[32m+[m[32m            "sourcing": None[m
+[32m+[m[32m        }[m
+[32m+[m[32m    text = normalize_text(page_text)[m
+[32m+[m[32m    scores, reasons = score_sourcing(text)[m
+[32m+[m[32m    sourcing = select_sourcing(scores, reasons)[m
+[32m+[m[32m    return {[m
+[32m+[m[32m        "sourcing": sourcing[m
+[32m+[m[32m    }[m
